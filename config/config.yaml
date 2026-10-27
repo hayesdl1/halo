@@ -1,0 +1,71 @@
+# HALO strategy configuration. Defaults follow HALO_STRATEGY_SPEC.md sections 2, 4 and 5.
+# Everything here is fixed before tuning starts. Only the robustness section varies it.
+# Changing holdout.start, the tuning objective, or the metric list requires asking the user first.
+
+sample:
+  signal_start: "1996-01"        # first month-end at which a score is formed
+  return_start: "1996-02"        # first holding month
+  compustat_min_datadate: "1994-01-01"
+  crsp_chunk_years: 3            # pull CRSP in chunks of this many years
+
+universe:
+  n_stocks: 1000                 # top N by mthcap among filtered stocks. Variants: 500, 1500
+  min_price: 5.0
+  exclude_financials: true       # SIC 6000-6999
+  financial_sic_range: [6000, 6999]
+  exchanges: ["N", "A", "Q"]     # primaryexch values (NYSE, AMEX, NASDAQ)
+  # CIZ common-stock filter, spec 3.3. All five must hold.
+  common_stock_filter:
+    sharetype: ["NS"]
+    securitytype: ["EQTY"]
+    securitysubtype: ["COM"]
+    usincflg: ["Y"]
+    issuertype: ["ACOR", "CORP"]
+  exchange_filter:
+    conditionaltype: ["RW"]
+    tradingstatusflg: ["A"]
+
+link:
+  linktypes: ["LC", "LU"]        # add "LS" as a variant once M1 confirms it is licensed
+  linkprim: ["P", "C"]
+
+fundamentals:
+  lag_months: 6                  # record usable at month-end datadate + lag. Robustness: 3, 9
+  expiry_months: 18              # record expires this many months after datadate
+  ppe: ppent                     # ppent | ppegt
+  nonpositive_ebitda: "nan"      # "nan" | "max_rank"
+  ebitda_fallback: oibdp
+  intan_missing_as_zero: true
+
+score:
+  metrics: [tai, fai, fas, clr, cxi, cxl]
+  min_metrics: 4                 # stock dropped that month if fewer metrics are available
+  sector_neutral: false          # rank within 2-digit SIC groups
+  sector_min_group: 10           # merge smaller 2-digit groups into their 1-digit parent
+  obsolescence_extension: false  # spec 4.4, build after M6
+
+portfolio:
+  basket: quintile               # quintile | tercile | half
+  weighting: equal               # equal | value
+  cost_bps: 10                   # per dollar traded, one way
+  cost_bps_sensitivity: [0, 5, 10, 25]
+
+tuning:
+  objective: net_ls_sharpe       # annualised Sharpe of net Q5 minus Q1 EW long-short. Do not change without asking
+  grid_step: 0.1                 # 3003 simplex points for six metrics
+  refine_step: 0.05
+  refine_top_k: 20
+  smoothing_l1_radius: 0.2
+  shrinkage_lambdas: [0.0, 0.5, 1.0]
+  first_train_end: "2007-12"
+  walkforward_years: [2008, 2022]
+  n_random_weights: 1000
+  random_seed: 20260224
+
+holdout:
+  start: "2023-01"               # sealed. Do not change without asking the user
+  goldman_regime_start: "2025-01"
+
+evaluation:
+  newey_west_lags: 6
+  periods_per_year: 12
