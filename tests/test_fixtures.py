@@ -47,7 +47,7 @@ def test_ciz_conventions(fixture_default):
     assert (msf["mthprc"] > 0).all(), "CIZ prices are always positive"
     assert (msf["mthret"].dropna() > -1).all()
     # mthcaldt is a weekday at or before calendar month end.
-    assert (msf["mthcaldt"].dt.weekday < 5).all()
+    assert (msf["mthcaldt"].dt.day_of_week < 5).all()
     assert (msf["mthcaldt"] <= month.dt.to_timestamp(how="end")).all()
     # No legacy missing-return codes.
     assert not msf["mthret"].isin([-66, -77, -88, -99]).any()
