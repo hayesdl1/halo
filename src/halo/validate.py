@@ -120,6 +120,11 @@ def check_panel(p: pd.DataFrame, cfg: dict) -> list[Check]:
                      f"{null_ret:,} NULL next return, {no_row:,} with no next row, of "
                      f"{len(held):,} ({share:.3%})"))
 
+    out.append(Check("P10", "What happened to scored stocks with no next-month row: back "
+                     "later (a gap) or never seen again (left the common-stock pull without a "
+                     "delisting row). Their prior-month return is shown to spot distress",
+                     INFO, _missing_next_detail(p, held)))
+
     src = e.groupby(e["month"].dt.year)["sic_source"].value_counts(normalize=True).unstack()
     out.append(Check("P8", "SIC source among eligible rows (CRSP siccd, else Compustat sich)",
                      INFO, " | ".join(f"{y}: " + ", ".join(f"{k} {v:.1%}" for k, v in r.dropna()
@@ -134,3 +139,18 @@ def check_panel(p: pd.DataFrame, cfg: dict) -> list[Check]:
                      "and Software in the bottom 3 by median score", ok,
                      f"{table}. If this fails, the metric construction is wrong: stop and report"))
     return out
+
+
+def _missing_next_detail(p: pd.DataFrame, held: pd.DataFrame) -> str:
+    gone = held[~held["has_next_row"]]
+    if gone.empty:
+        return "none"
+    last_seen = p.groupby("permno")["month"].max()
+    back = (gone["month"].reset_index(drop=True)
+            < last_seen.reindex(gone["permno"]).reset_index(drop=True)).to_numpy()
+    by_year = gone.groupby(gone["month"].dt.year).size()
+    exits = gone[~back]
+    return (f"{len(gone):,} stock-months: {int(back.sum()):,} gaps (stock returns later), "
+            f"{len(exits):,} exits (never seen again). Mean return in the month before "
+            f"exit {exits['mthret'].mean():.2%} vs all scored {held['mthret'].mean():.2%}. "
+            "By year: " + ", ".join(f"{y}: {n}" for y, n in by_year.items()))

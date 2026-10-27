@@ -51,6 +51,7 @@ def validate_config(cfg: dict) -> None:
     )
     assert cfg["portfolio"]["basket"] in ("quintile", "tercile", "half")
     assert cfg["portfolio"]["weighting"] in ("equal", "value")
+    assert cfg["portfolio"].get("cost_basis", "spec") in ("spec", "both_sides")
     first_train_end = cfg["tuning"]["first_train_end"]
     holdout = cfg["holdout"]["start"]
     assert first_train_end < holdout, "tuning window must end before the holdout"

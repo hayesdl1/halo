@@ -86,6 +86,8 @@ class FixtureConfig:
     n_noncommon: int = 10            # ADRs, ETFs, units: must be removed by universe filters
     planted: dict[str, float] | None = None   # e.g. {"clr": 0.02} for 2% a month top vs bottom
     lag_months: int = 6              # lag the planted premium uses to read fundamentals
+    time_sd_scale: float = 1.0       # scales year-to-year noise in firm ratios; raise it to
+                                     # make fresh fundamentals matter (look-ahead tests)
     idio_vol: float = 0.08           # monthly idiosyncratic volatility
     sector_vol: float = 0.03
     p_missing_return: float = 0.001  # NULL mthret in a non-delisting month
@@ -206,7 +208,7 @@ def make_fixture(cfg: FixtureConfig | None = None, **kwargs) -> Fixture:
                 break
             at *= np.exp(rng.normal(0.05, 0.12))
             def draw(k, sd=0.10, i=i, s=s):
-                return s[k] * np.exp(firm_dev[k][i] + rng.normal(0, sd))
+                return s[k] * np.exp(firm_dev[k][i] + rng.normal(0, sd * cfg.time_sd_scale))
             ppe_share = min(draw("ppe"), 0.9)
             cash_share = min(draw("cash"), 0.6)
             intan_share = min(draw("intan"), 0.9 - ppe_share)
@@ -487,3 +489,28 @@ def fake_fred(url: str) -> str:
     vals[-1] = "."
     rows = "\n".join(f"{d:%Y-%m-%d},{v}" for d, v in zip(dates, vals, strict=True))
     return f"observation_date,{sid}\n{rows}"
+
+
+def panel_inputs(fixture: Fixture) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """The (msf, ccm, funda) tables as the M2 pulls would leave them, built directly.
+
+    Same content as running the pull steps on ``to_fake_wrds(fixture, "standard")``, but
+    quicker, for tests that only need panel inputs: common stock only, CIZ filter
+    columns and point-in-time siccd on msf, links of type LC/LU/LS and primacy P/C,
+    Compustat standard-format rows.
+    """
+    msf = fixture.msf.merge(fixture.secinfo.drop(columns="ticker"), on="permno")
+    msf = msf[(msf["mthcaldt"] >= msf["secinfostartdt"])
+              & (msf["mthcaldt"] <= msf["secinfoenddt"])]
+    msf = msf[msf["permno"].isin(fixture.truth["permno"])]
+    msf = msf.drop(columns=["secinfostartdt", "secinfoenddt"]).reset_index(drop=True)
+    for c in ["sharetype", "securitytype", "securitysubtype", "usincflg", "issuertype",
+              "primaryexch", "conditionaltype", "tradingstatusflg"]:
+        msf[c] = msf[c].astype("category")
+    msf["siccd"] = msf["siccd"].astype("Int64")
+    msf["month"] = msf["mthcaldt"].dt.to_period("M")
+    ccm = fixture.ccm.rename(columns={"lpermno": "permno"})
+    ccm = ccm[ccm["linktype"].isin(["LC", "LU", "LS"]) & ccm["linkprim"].isin(["P", "C"])]
+    funda = fixture.funda[fixture.funda["indfmt"] == "INDL"].drop(
+        columns=["indfmt", "datafmt", "popsrc", "consol"]).reset_index(drop=True)
+    return msf, ccm.reset_index(drop=True), funda
