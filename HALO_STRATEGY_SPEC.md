@@ -264,6 +264,7 @@ Log every weight vector and configuration evaluated to `results/trials.csv` (con
 - At each month-end `t`: form baskets from scores, hold through `t+1`.
 - Equal weight within basket. Weight drift within the month is tracked so turnover is measured against drifted weights: `turnover_t = 0.5 * sum_i |w_target_i - w_drifted_i|`, summed over both legs for the long-short.
 - Cost per month = `turnover x cost_bps / 10000`. Report gross and net.
+- Cost basis (decided with the user on 2026-10-27): `cost_bps` is charged per dollar traded on both buys and sells, so cost = `2 x turnover x cost_bps / 10000` with turnover as defined above. Config `portfolio.cost_basis: both_sides`.
 - Basket composition report each year: number of stocks, share of weight by 2-digit SIC and by Fama-French 12 industry, average market cap. The point is to show how much of the result is a sector bet.
 
 ---
@@ -339,6 +340,7 @@ Decisions confirmed by the user on 2026-10-27 (previously open):
 - Holdout starts 2023-01.
 - Obsolescence extension (4.4) is off. Raise it again after M6 if the results suggest it is worth testing.
 - Added: leverage control and term/default spread factors (sections 3.6, 3.7, 7). Credit ratings are not used: Compustat S&P ratings end in 2017 and miss the holdout.
+- Costs are charged on both sides of each trade (section 6).
 
 ---
 

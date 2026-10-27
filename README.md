@@ -11,7 +11,7 @@ A US-equity version of Goldman Sachs' HALO (Heavy Assets, Low Obsolescence) Capi
 | M2 | Pull scripts | done; both pulls passed (2026-10-27) |
 | M3 | Panel build | done; all checks passed, Exhibit 6 reproduced (2026-10-27) |
 | M4 | Unit tests (look-ahead, ranks, turnover) | done; portfolio code and tests |
-| M5 | Tuning and walk-forward | next |
+| M5 | Tuning and walk-forward | script built; waiting for the local run |
 | M6 | Evaluation and report | |
 | M7 | Holdout | |
 
@@ -24,6 +24,7 @@ Confirmed with the user on 2026-10-27 (details in the spec, section 10):
 - Holdout starts 2023-01 and is sealed until M7.
 - Obsolescence extension off for now; revisit after M6.
 - Added: leverage control and term/default spread factors. No credit ratings (Compustat coverage ends 2017).
+- Trading costs: 10 bps per dollar traded, charged on buys and sells.
 
 ## Setup
 
