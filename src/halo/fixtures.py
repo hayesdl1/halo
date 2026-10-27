@@ -475,3 +475,15 @@ def to_fake_wrds(fixture: Fixture, layout: str = "standard"):
     db.add_table("ff", "factors_monthly", fac[["date", "mktrf", "smb", "hml", "rf", "umd"]])
     db.add_table("ff", "fivefactors_monthly", fac)
     return db
+
+
+def fake_fred(url: str) -> str:
+    """Stand-in for the FRED CSV download: four plausible monthly yield series, 1990 to
+    2016, in percent, with the last value missing (FRED marks it with a dot)."""
+    sid = url.split("=")[-1]
+    base = {"GS10": 4.5, "TB3MS": 2.5, "BAA": 6.5, "AAA": 5.5}[sid]
+    dates = pd.date_range("1990-01-01", "2016-06-01", freq="MS")
+    vals = [f"{base + np.sin(i / 7):.2f}" for i in range(len(dates))]
+    vals[-1] = "."
+    rows = "\n".join(f"{d:%Y-%m-%d},{v}" for d, v in zip(dates, vals, strict=True))
+    return f"observation_date,{sid}\n{rows}"

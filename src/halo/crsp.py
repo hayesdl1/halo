@@ -128,7 +128,7 @@ def pull_secinfo(db, smap: dict, out_dir: Path, log=print) -> pd.DataFrame:
     return df
 
 
-def crsp_screen(msf: pd.DataFrame, cfg: dict) -> pd.DataFrame:
+def crsp_screen(msf: pd.DataFrame, cfg: dict, sic_col: str = "siccd") -> pd.DataFrame:
     """CRSP-side eligibility at each month-end (spec 3.8, before link and fundamentals).
 
     Adds ``crsp_ok`` (exchange filter, price, financials, non-missing cap) and
@@ -142,9 +142,9 @@ def crsp_screen(msf: pd.DataFrame, cfg: dict) -> pd.DataFrame:
     for col in ("conditionaltype", "tradingstatusflg"):
         if col in msf:
             ok &= msf[col].isin(exch[col])
-    if u["exclude_financials"] and "siccd" in msf:
+    if u["exclude_financials"] and sic_col in msf:
         lo, hi = u["financial_sic_range"]
-        ok &= ~msf["siccd"].between(lo, hi).fillna(False).astype(bool)
+        ok &= ~msf[sic_col].between(lo, hi).fillna(False).astype(bool)
     out = msf.assign(crsp_ok=ok.astype(bool))
     cap = out["mthcap"].where(out["crsp_ok"])
     out["size_rank"] = cap.groupby(out["month"]).rank(ascending=False, method="first")

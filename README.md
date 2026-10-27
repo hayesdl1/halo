@@ -8,8 +8,8 @@ A US-equity version of Goldman Sachs' HALO (Heavy Assets, Low Obsolescence) Capi
 |---|---|---|
 | M0 | Scaffold, config, data guard, CI, synthetic fixture | done |
 | M1 | WRDS schema discovery | done; see docs/schema_discovery.md and docs/schema_notes.md |
-| M2 | Pull scripts | scripts built; waiting for the WRDS run |
-| M3 | Panel build | |
+| M2 | Pull scripts | done; both pulls passed (2026-10-27) |
+| M3 | Panel build | script built; waiting for the local run |
 | M4 | Unit tests (look-ahead, ranks, turnover) | |
 | M5 | Tuning and walk-forward | |
 | M6 | Evaluation and report | |

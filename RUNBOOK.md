@@ -27,7 +27,7 @@ pytest -q        # about 10 seconds; all tests use synthetic data
 | 0 | `python scripts/00_discover_schema.py` | yes | M1, ready to run |
 | 1 | `python scripts/01_pull_crsp.py` | yes | M2, ready to run |
 | 2 | `python scripts/02_pull_compustat.py` | yes (and FRED) | M2, ready to run |
-| 3 | `python scripts/03_build_panel.py` | no | M3, not built yet |
+| 3 | `python scripts/03_build_panel.py` | no | M3, ready to run |
 | 4 | `python scripts/04_tune_walkforward.py` | no | M5, not built yet |
 | 5 | `python scripts/05_evaluate.py` | no | M6, not built yet |
 | 6 | `python scripts/06_holdout.py` | no | M7, run once only, after asking |
@@ -104,3 +104,18 @@ Everything in `data/` is gitignored and blocked by the pre-commit hook. Never co
 **Checks in step 2:** one Compustat record per firm and date, input coverage by year, factor units and `rf` range, no missing factor months, yield ranges, link coverage of the top 1000 each December (must be above 90%), fundamentals coverage of that universe, and the 6-month lag rule.
 
 **Send back:** everything below the paste line from each step. If FRED is blocked on your network, step 2 reports `RATE0` as FAIL; rerun with `--skip-fred` and tell me.
+
+## Step 3: build the panel (local, no WRDS)
+
+```
+git pull
+python scripts/03_build_panel.py
+```
+
+**Runtime:** about 1 minute; peak memory about 2 GB.
+
+**What it does:** reads the files from steps 1 and 2, and for every stock-month: links to Compustat as of that month, attaches the latest annual report that is at least 6 and at most 18 months old, decides eligibility (exchange filter, price at least $5, non-financial, top 1000 by market cap, linked, has fundamentals), computes the six metrics, ranks them within the eligible universe each month, and computes the equal-weight score (Goldman replica) plus a sector-neutral version. Writes `data/processed/panel.parquet` (gitignored).
+
+**Checks printed:** one row per stock-month, eligible counts each December, link coverage, metric coverage and how often `intan` was treated as 0, the lag rule on every eligible row, share of eligible stocks with a score, missing next-month returns (must be under 0.5%), SIC source, and the Goldman Exhibit 6 check: median score by sector on the last month, with utilities in the top 3 and software in the bottom 3. If Exhibit 6 fails, the metrics are built wrong and we stop to investigate.
+
+**Send back:** everything below the paste line.
