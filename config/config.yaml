@@ -60,10 +60,10 @@ portfolio:
   basket: quintile               # quintile | tercile | half
   weighting: equal               # equal | value
   cost_bps: 10                   # per dollar traded, one way
-  # Spec 6: cost = turnover x cost_bps, turnover = 0.5 x sum|w_target - w_drifted| (buys only).
-  # "both_sides" charges cost_bps on buys and sells, which doubles the cost. Ask the user
-  # before changing the default: it changes the tuning objective.
-  cost_basis: spec               # spec | both_sides
+  # cost = turnover x cost_bps x 2, turnover = 0.5 x sum|w_target - w_drifted|: cost_bps is
+  # charged on buys and on sells. Decided with the user on 2026-10-27. "spec" (buys only,
+  # half the cost) stays available. Changing it changes the tuning objective: ask first.
+  cost_basis: both_sides         # both_sides | spec
   cost_bps_sensitivity: [0, 5, 10, 25]
 
 tuning:

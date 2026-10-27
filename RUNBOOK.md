@@ -28,7 +28,7 @@ pytest -q        # about 10 seconds; all tests use synthetic data
 | 1 | `python scripts/01_pull_crsp.py` | yes | M2, ready to run |
 | 2 | `python scripts/02_pull_compustat.py` | yes (and FRED) | M2, ready to run |
 | 3 | `python scripts/03_build_panel.py` | no | M3, ready to run |
-| 4 | `python scripts/04_tune_walkforward.py` | no | M5, not built yet |
+| 4 | `python scripts/04_tune_walkforward.py` | no | M5, ready to run |
 | 5 | `python scripts/05_evaluate.py` | no | M6, not built yet |
 | 6 | `python scripts/06_holdout.py` | no | M7, run once only, after asking |
 
@@ -119,3 +119,21 @@ python scripts/03_build_panel.py
 **Checks printed:** one row per stock-month, eligible counts each December, link coverage, metric coverage and how often `intan` was treated as 0, the lag rule on every eligible row, share of eligible stocks with a score, missing next-month returns (must be under 0.5%), SIC source, and the Goldman Exhibit 6 check: median score by sector on the last month, with utilities in the top 3 and software in the bottom 3. If Exhibit 6 fails, the metrics are built wrong and we stop to investigate.
 
 **Send back:** everything below the paste line.
+
+## Step 4: tune the blend (local, no WRDS)
+
+```
+git pull
+python scripts/03_build_panel.py
+python scripts/04_tune_walkforward.py
+```
+
+Rerun step 3 first: it now also prints check P10 (what happened to stocks with a missing next-month return).
+
+**Runtime:** about 2 to 5 minutes.
+
+**What it does:** evaluates all 3,003 blends of the six metric ranks (weights in steps of 0.1 that sum to 1) on every month, using the objective fixed in the config: net Sharpe of the equal-weight Q5 minus Q1 portfolio, 10 bps per dollar traded on both sides. For each year from 2008 to 2022 it picks the blend with the best smoothed Sharpe (averaged with its neighbours) using only earlier months, then applies it to that year. It also runs the blend halfway back to equal weight, Goldman's equal-weight replica, and each metric on its own. Months from the holdout start (2023-01) are dropped before anything is computed.
+
+**Writes** (gitignored): `results/weights_path.csv`, `oos_returns.csv`, `oos_summary.csv`, and `trials.csv` (every blend and configuration tried, for the multiple-testing count).
+
+**Prints:** the chosen weights each year, how stable they are, and the out-of-sample Sharpe of every strategy. Send back everything below the paste line.
