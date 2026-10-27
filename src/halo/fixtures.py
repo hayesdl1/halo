@@ -329,6 +329,9 @@ def make_fixture(cfg: FixtureConfig | None = None, **kwargs) -> Fixture:
     delist_rows = delist_rows[delist_rows["permno"].isin(permno[delists])].index
     flg[msf.index.get_indexer(delist_rows)] = "DE"
     msf["mthretflg"] = pd.Categorical(flg, categories=["CR", "NT", "DE"])
+    # Last price date: month-end, except mid-month for a stock delisted during the month.
+    mid_month = msf["mthcaldt"].dt.to_period("M").dt.to_timestamp() + pd.Timedelta(days=14)
+    msf["mthprcdt"] = msf["mthcaldt"].where(msf["mthretflg"] != "DE", mid_month)
 
     # ---- non-common securities ----------------------------------------------------
     nc_permno = 90001 + np.arange(cfg.n_noncommon) * 7
@@ -340,9 +343,10 @@ def make_fixture(cfg: FixtureConfig | None = None, **kwargs) -> Fixture:
             r = rng.normal(0.008, 0.06)
             price *= 1 + r
             nc_recs.append((p, mcal[t], r, r - 0.001, price, price * shrout))
-    nc = pd.DataFrame(nc_recs, columns=msf.columns[:-2])
+    nc = pd.DataFrame(nc_recs, columns=msf.columns[:-3])
     nc["mthprcflg"] = pd.Categorical(["TR"] * len(nc), categories=["TR", "BA", "DA"])
     nc["mthretflg"] = pd.Categorical(["CR"] * len(nc), categories=["CR", "NT", "DE"])
+    nc["mthprcdt"] = nc["mthcaldt"]
     msf = pd.concat([msf, nc], ignore_index=True)
 
     # ---- security info history ----------------------------------------------------
@@ -420,6 +424,7 @@ def make_fixture(cfg: FixtureConfig | None = None, **kwargs) -> Fixture:
     # ---- dtypes, spec section 9 ---------------------------------------------------
     msf["permno"] = msf["permno"].astype("int64")
     msf["mthcaldt"] = msf["mthcaldt"].astype("datetime64[ns]")
+    msf["mthprcdt"] = msf["mthprcdt"].astype("datetime64[ns]")
     for col in ["mthret", "mthretx", "mthprc", "mthcap"]:
         msf[col] = msf[col].astype("float64")
     msf = msf.sort_values(["permno", "mthcaldt"], ignore_index=True)
@@ -483,9 +488,10 @@ def fake_fred(url: str) -> str:
     """Stand-in for the FRED CSV download: four plausible monthly yield series, 1990 to
     2016, in percent, with the last value missing (FRED marks it with a dot)."""
     sid = url.split("=")[-1]
-    base = {"GS10": 4.5, "TB3MS": 2.5, "BAA": 6.5, "AAA": 5.5}[sid]
+    base, phase = {"GS10": (4.5, 0.0), "TB3MS": (2.5, 1.3), "BAA": (6.5, 2.1),
+                   "AAA": (5.5, 0.4)}[sid]
     dates = pd.date_range("1990-01-01", "2016-06-01", freq="MS")
-    vals = [f"{base + np.sin(i / 7):.2f}" for i in range(len(dates))]
+    vals = [f"{base + np.sin(i / 7 + phase):.2f}" for i in range(len(dates))]
     vals[-1] = "."
     rows = "\n".join(f"{d:%Y-%m-%d},{v}" for d, v in zip(dates, vals, strict=True))
     return f"observation_date,{sid}\n{rows}"

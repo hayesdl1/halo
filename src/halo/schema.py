@@ -65,7 +65,7 @@ CONCEPTS: dict[str, Concept] = {c.name: c for c in [
         ),
         columns={
             **_same("permno", "mthcaldt", "mthret", "mthretx", "mthprc", "mthcap",
-                    "mthprcflg", "mthretflg", "mthshrout", "siccd"),
+                    "mthprcflg", "mthretflg", "mthprcdt", "mthshrout", "siccd"),
             **_same(*CIZ_FILTER_COLUMNS),
         },
         required=("permno", "mthcaldt", "mthret", "mthprc", "mthcap"),

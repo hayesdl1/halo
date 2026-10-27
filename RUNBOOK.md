@@ -29,7 +29,7 @@ pytest -q        # about 10 seconds; all tests use synthetic data
 | 2 | `python scripts/02_pull_compustat.py` | yes (and FRED) | M2, ready to run |
 | 3 | `python scripts/03_build_panel.py` | no | M3, ready to run |
 | 4 | `python scripts/04_tune_walkforward.py` | no | M5, ready to run |
-| 5 | `python scripts/05_evaluate.py` | no | M6, not built yet |
+| 5 | `python scripts/05_evaluate.py` | no | M6, ready to run |
 | 6 | `python scripts/06_holdout.py` | no | M7, run once only, after asking |
 
 Each step's expected runtime and printed output are documented below as they are built.
@@ -137,3 +137,26 @@ Rerun step 3 first: it now also prints check P10 (what happened to stocks with a
 **Writes** (gitignored): `results/weights_path.csv`, `oos_returns.csv`, `oos_summary.csv`, and `trials.csv` (every blend and configuration tried, for the multiple-testing count).
 
 **Prints:** the chosen weights each year, how stable they are, and the out-of-sample Sharpe of every strategy. Send back everything below the paste line.
+
+## Step 5: evaluate and write the report (local, no WRDS)
+
+M6 changed the eligibility rule (a stock must trade to the end of the month), which needs one extra CRSP column. Run the full sequence once:
+
+```
+git pull
+$env:WRDS_USERNAME="hayesdl"
+python scripts/01_pull_crsp.py
+python scripts/03_build_panel.py
+python scripts/04_tune_walkforward.py
+python scripts/05_evaluate.py
+```
+
+Step 2 (Compustat) does not need rerunning. Step 3 now prints check P11 with the number of mid-month delistings excluded.
+
+**Runtime of step 5:** about 10 to 20 minutes, mostly the robustness grid, which rebuilds the panel for 7 of its 16 variants. `python scripts/05_evaluate.py --no-robustness` skips it for a quick look.
+
+**What it does** (all on pre-holdout months only): performance tables for the tuned blend, the halfway blend, Goldman's equal-weight replica, each metric alone, and Value and Investment long-shorts built the same way; factor regressions (CAPM, FF3, Carhart, FF5 + momentum, and FF5 + momentum + rate changes); spanning on HML and CMA; Fama-MacBeth with size, book-to-market, profitability, asset growth, momentum and leverage; double sorts within terciles of book-to-market, asset growth and leverage; sub-periods by era and by whether the 10-year yield rose or fell; 1,000 random blends and where the tuned blend falls among them; White's Reality Check p-value for the best in-sample blend; basket composition by industry; the robustness grid; six charts.
+
+**Writes:** one CSV per analysis in `results/`, charts in `results/charts/`, and `results/REPORT.md`, built only from those CSVs. It refuses to run if `results/oos_returns.csv` was made from a different panel (rerun step 4).
+
+**Send back:** everything below the paste line, which is the full REPORT.md. The charts are in `results\charts` if you want to look at them.

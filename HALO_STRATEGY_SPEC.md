@@ -187,6 +187,8 @@ Write `data/processed/panel.parquet`, one row per `(permno, month)`, with:
 
 Eligibility at month-end `t`: passes 3.3 filters at `t`, price >= $5, SIC not 6000-6999, top `N_UNIVERSE` by `mthcap` among all filtered stocks, valid CCM link, fundamentals record available and not expired.
 
+Added in M6: the stock must also trade to the end of month `t` (its last price date `mthprcdt` is the month's last trading day). A stock delisted mid-month, usually in a takeover, cannot be bought at that month-end. This uses only information dated within the month.
+
 ### 3.9 Validation checks (assert, and print a report)
 
 Raw CRSP: no duplicate `(permno, month)`; return range sanity (monthly returns > -1; share of returns > 300% under 0.01%); count of eligible stocks per year is stable (print the series; flag any year with a drop over 30%); date range printed per table.

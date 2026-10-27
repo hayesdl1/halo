@@ -16,6 +16,7 @@ rows up to ``as_of`` must come out identical to the full build (tests/test_panel
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 from halo import METRICS
@@ -29,6 +30,18 @@ from halo.score import equal_weights, pct_ranks, rank_inputs, sector_groups, wei
 KEEP_FUNDA = ["at", "che", "intan", "sale", "ppent", "ppegt", "emp", "capx", "ebitda", "oibdp",
               "dp", "xrd", "dltt", "dlc", "ceq", "seq", "pstk", "pstkrv", "pstkl", "txditc",
               "revt", "cogs", "xsga", "xint"]
+
+
+def add_lagged_assets(funda: pd.DataFrame) -> pd.DataFrame:
+    """``at_lag``: total assets from the same firm's previous fiscal year, if that record
+    is 9 to 15 months older (so a fiscal year-end change does not give a bogus growth)."""
+    f = funda.sort_values(["gvkey", "datadate"]).copy()
+    prev_at = f.groupby("gvkey")["at"].shift(1)
+    prev_dd = f.groupby("gvkey")["datadate"].shift(1)
+    gap = (f["datadate"].dt.year - prev_dd.dt.year) * 12 + (f["datadate"].dt.month
+                                                          - prev_dd.dt.month)
+    f["at_lag"] = prev_at.where(gap.between(9, 15))
+    return f
 
 
 def truncate_inputs(msf: pd.DataFrame, ccm: pd.DataFrame, funda: pd.DataFrame, cfg: dict,
@@ -56,6 +69,19 @@ def build_panel(msf: pd.DataFrame, ccm: pd.DataFrame, funda: pd.DataFrame, cfg: 
     p["retflg_next"] = nxt["mthretflg"].where(follows)
     p["has_next_row"] = follows.fillna(False).astype(bool)
 
+    # 12-1 momentum: compounded return over months t-11 to t-1, all 11 present and
+    # consecutive. Uses only returns up to t-1.
+    lr = np.log1p(p["mthret"])
+    g = p.groupby("permno")
+    lagged = lr.groupby(p["permno"]).shift(1)
+    p["_lr1"] = lagged
+    mi = p["month"].dt.year * 12 + p["month"].dt.month
+    span_ok = (g["month"].shift(1).dt.year * 12 + g["month"].shift(1).dt.month
+               - (g["month"].shift(11).dt.year * 12 + g["month"].shift(11).dt.month)) == 10
+    roll = p.groupby("permno")["_lr1"].rolling(11, min_periods=11).sum()
+    p["mom_12_1"] = np.expm1(roll.reset_index(level=0, drop=True)).where(span_ok & mi.notna())
+    p = p.drop(columns="_lr1")
+
     linked, n_multi = link_gvkey(p[["permno", "month"]], ccm, cfg)
     p["gvkey"] = linked["gvkey"].to_numpy()
     p["has_link"] = p["gvkey"].notna()
@@ -66,7 +92,8 @@ def build_panel(msf: pd.DataFrame, ccm: pd.DataFrame, funda: pd.DataFrame, cfg: 
     # exchange, price and market-cap screen. Skipping the rest keeps memory down.
     pre = crsp_screen(p.assign(_nosic=float("nan")), cfg, sic_col="_nosic")["crsp_ok"]
     rows = p.index[pre & p["has_link"]]
-    keep = ["gvkey", "datadate", *[c for c in KEEP_FUNDA if c in funda], "sich"]
+    funda = add_lagged_assets(funda)
+    keep = ["gvkey", "datadate", *[c for c in KEEP_FUNDA if c in funda], "sich", "at_lag"]
     att = attach_fundamentals(p.loc[rows, ["gvkey", "month"]],
                               funda[[c for c in keep if c in funda]],
                               f["lag_months"], f["expiry_months"])

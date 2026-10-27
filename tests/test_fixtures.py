@@ -8,7 +8,7 @@ from halo import METRICS
 from halo.fixtures import _metric_values, make_fixture
 
 MSF_COLS = ["permno", "mthcaldt", "mthret", "mthretx", "mthprc", "mthcap", "mthprcflg",
-            "mthretflg"]
+            "mthretflg", "mthprcdt"]
 SECINFO_COLS = ["permno", "secinfostartdt", "secinfoenddt", "ticker", "siccd", "sharetype",
                 "securitytype", "securitysubtype", "usincflg", "issuertype", "primaryexch",
                 "conditionaltype", "tradingstatusflg"]

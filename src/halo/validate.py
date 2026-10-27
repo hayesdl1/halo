@@ -125,6 +125,21 @@ def check_panel(p: pd.DataFrame, cfg: dict) -> list[Check]:
                      "delisting row). Their prior-month return is shown to spot distress",
                      INFO, _missing_next_detail(p, held)))
 
+    if "mthprcdt" in p:
+        last_day = p.groupby("month")["mthcaldt"].transform("max")
+        cand = p[(p["month"] >= start) & p["mthcap"].notna()
+                 & (p["mthprc"] >= cfg["universe"]["min_price"])]
+        stopped = cand["mthprcdt"] < last_day.loc[cand.index]
+        out.append(Check("P11", "Stocks excluded because their last price came before the "
+                         "month-end (delisted mid-month, usually in a takeover)", INFO,
+                         f"{int(stopped.sum()):,} stock-months of {len(cand):,} priced at "
+                         "$5 or more"))
+    else:
+        out.append(Check("P11", "Mid-month delistings excluded from eligibility", FLAG,
+                         "the CRSP pull has no mthprcdt column, so stocks delisted mid-month "
+                         "still count as eligible at that month-end. Rerun "
+                         "scripts/01_pull_crsp.py"))
+
     src = e.groupby(e["month"].dt.year)["sic_source"].value_counts(normalize=True).unstack()
     out.append(Check("P8", "SIC source among eligible rows (CRSP siccd, else Compustat sich)",
                      INFO, " | ".join(f"{y}: " + ", ".join(f"{k} {v:.1%}" for k, v in r.dropna()
