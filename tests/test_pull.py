@@ -10,7 +10,7 @@ from halo.config import load_config
 from halo.crsp import crsp_screen, load_msf
 from halo.discovery import run_discovery
 from halo.factors import parse_fred_csv, pull_ff
-from halo.fixtures import make_fixture, to_fake_wrds
+from halo.fixtures import fake_fred, make_fixture, to_fake_wrds
 from halo.link import link_gvkey
 from halo.pull import ph, resolve_columns, sql_list, year_chunks
 from halo.pull_steps import step_compustat, step_crsp
@@ -18,16 +18,6 @@ from halo.schema import load_schema_map
 from halo.wrds_io import SqliteWRDS
 
 END = "2003-12-31"
-
-
-def fake_fred(url):
-    sid = url.split("=")[-1]
-    base = {"GS10": 4.5, "TB3MS": 2.5, "BAA": 6.5, "AAA": 5.5}[sid]
-    d = pd.date_range("1990-01-01", "2004-06-01", freq="MS")
-    vals = [f"{base + np.sin(i / 7):.2f}" for i in range(len(d))]
-    vals[-1] = "."                       # FRED marks a missing value with a dot
-    return "observation_date," + sid + "\n" + "\n".join(
-        f"{x:%Y-%m-%d},{v}" for x, v in zip(d, vals, strict=True))
 
 
 @pytest.fixture(scope="module")
