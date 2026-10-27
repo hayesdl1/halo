@@ -168,3 +168,98 @@ def test_query_error_becomes_error_row(small, tmp_path):
 def test_schema_map_missing_gives_clear_error(tmp_path):
     with pytest.raises(FileNotFoundError, match="00_discover_schema"):
         load_schema_map(tmp_path / "nope.yaml")
+
+
+def _deny(db, blocked):
+    """Mimic WRDS views whose source schema this account cannot read."""
+    real = db.raw_sql
+
+    def guarded(sql, **kw):
+        if any(f"{t} " in sql + " " for t in blocked):
+            raise RuntimeError("(psycopg2.errors.InsufficientPrivilege) permission denied "
+                               "for schema crsp_a_stock\n[SQL: ...]")
+        return real(sql, **kw)
+
+    db.raw_sql = guarded
+    return db
+
+
+def _both_layouts(small):
+    db = to_fake_wrds(small, "standard")
+    variant = to_fake_wrds(small, "variant")
+    for lib in variant.list_libraries():
+        if lib.startswith("crsp"):
+            for t in variant.list_tables(lib):
+                db.add_table(lib, t, variant.raw_sql(f"SELECT * FROM {lib}.{t}"))
+    return db
+
+
+def test_unreadable_tables_fall_back_to_readable_ones(small, tmp_path):
+    db = _deny(_both_layouts(small), ["crsp.msf_v2", "crsp.stksecurityinfohist"])
+    d, checks = run(db, tmp_path)
+    assert d.failures == [], d.failures
+    assert d.tables["msf"].fqn == "crsp_a_stock62.wrds_msf62v2_query"
+    assert d.tables["secinfo"].fqn == "crsp_a_stock62.stksecurityinfohist62"
+    assert checks["A1"].status == "INFO"
+    assert "crsp.msf_v2" in checks["A1"].evidence
+    assert "[SQL" not in checks["A1"].evidence, "only the first line of the error is kept"
+    m = load_schema_map(tmp_path / "map.yaml")
+    assert m["tables"]["msf"]["library"] == "crsp_a_stock62"
+
+
+def test_all_candidates_unreadable_is_a_failure(small, tmp_path):
+    db = _deny(to_fake_wrds(small, "standard"), ["crsp.msf_v2"])
+    d, checks = run(db, tmp_path)
+    assert "msf" in d.unresolved
+    assert "permission denied on: ['crsp.msf_v2']" in d.unresolved["msf"]
+    assert any("needed table msf" in f for f in d.failures)
+
+
+def test_unreadable_legacy_table_gives_unknown(small, tmp_path):
+    db = to_fake_wrds(small, "standard")
+    db.add_table("crsp", "msf", small.msf[["permno", "mthcaldt"]].rename(
+        columns={"mthcaldt": "date"}))
+    _, checks = run(_deny(db, ["crsp.msf"]), tmp_path)
+    assert checks["R7"].status == UNKNOWN
+
+
+def test_negative_rf_before_sample_start_is_fine(small, tmp_path):
+    db = to_fake_wrds(small, "standard")
+    early = small.factors.iloc[:12].copy()
+    early["date"] = pd.date_range("1931-01-01", periods=12, freq="MS")
+    early["rf"] = -0.0006
+    fac = pd.concat([early, small.factors], ignore_index=True)
+    db.add_table("ff", "factors_monthly", fac[["date", "mktrf", "smb", "hml", "rf", "umd"]])
+    _, checks = run(db, tmp_path)
+    assert checks["V10"].status == CONFIRMED
+    _, checks = run(db, tmp_path, sample_start="1926-01-01")
+    assert checks["V10"].status == REFUTED
+
+
+def test_secinfo_whole_life_columns_flagged(small, tmp_path):
+    # Mimic a security info table whose only date columns span the security's whole life:
+    # every row of a permno with a SIC change then shares one window, so windows overlap.
+    si = small.secinfo.copy()
+    # A mid-sample SIC change: same permno, second row from halfway through its life.
+    for _, row in si[si["secinfoenddt"].dt.year > 2090].head(3).iterrows():
+        mid = row["secinfostartdt"] + pd.DateOffset(years=2)
+        si.loc[row.name, "secinfoenddt"] = mid
+        si = pd.concat([si, row.to_frame().T.assign(
+            secinfostartdt=mid + pd.Timedelta(days=1), siccd=row["siccd"] + 1)],
+            ignore_index=True)
+    si = si.astype(small.secinfo.dtypes.to_dict())
+    db0 = to_fake_wrds(small, "variant")
+    db0.add_table("crsp_a_stock62", "stksecurityinfohist62", si.rename(columns={
+        "secinfostartdt": "securitybegdt", "secinfoenddt": "securityenddt"}))
+    _, checks = run(db0, tmp_path)
+    assert checks["S1"].status == CONFIRMED, "true validity windows do not overlap"
+    life = si.groupby("permno").agg(b=("secinfostartdt", "min"), e=("secinfoenddt", "max"))
+    si = si.join(life, on="permno").drop(columns=["secinfostartdt", "secinfoenddt"])
+    si = si.rename(columns={"b": "securitybegdt", "e": "securityenddt"})
+    db = to_fake_wrds(small, "variant")
+    db.add_table("crsp_a_stock62", "stksecurityinfohist62", si)
+    _, checks = run(db, tmp_path)
+    assert checks["S1"].status == REFUTED
+    assert "whole life" in checks["S1"].evidence
+    _, checks = run(to_fake_wrds(small, "standard"), tmp_path)
+    assert checks["S1"].status == CONFIRMED

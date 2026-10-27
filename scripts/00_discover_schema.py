@@ -18,6 +18,7 @@ import time
 from pathlib import Path
 
 from halo import REPO_ROOT
+from halo.config import load_config
 from halo.discovery import run_discovery
 from halo.wrds_io import connect
 
@@ -34,7 +35,8 @@ def main() -> int:
     start = time.time()
     db = connect()
     try:
-        d = run_discovery(db, args.doc, args.map, prefer_library=args.prefer_library)
+        d = run_discovery(db, args.doc, args.map, prefer_library=args.prefer_library,
+                          sample_start=load_config()["sample"]["signal_start"])
     finally:
         db.close()
 
