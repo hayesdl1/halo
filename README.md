@@ -7,7 +7,7 @@ A US-equity version of Goldman Sachs' HALO (Heavy Assets, Low Obsolescence) Capi
 | Milestone | Deliverable | Status |
 |---|---|---|
 | M0 | Scaffold, config, data guard, CI, synthetic fixture | done |
-| M1 | WRDS schema discovery | next |
+| M1 | WRDS schema discovery | script built; waiting for the WRDS run |
 | M2 | Pull scripts | |
 | M3 | Panel build | |
 | M4 | Unit tests (look-ahead, ranks, turnover) | |
@@ -32,6 +32,7 @@ WRDS data is licensed and never leaves the user's machine. `data/` and `results/
 
 ```
 config/       config.yaml (all research settings), schema_map.yaml (from M1)
+docs/         schema_discovery.md (from M1)
 src/halo/     library code
 scripts/      numbered pipeline scripts, run in order
 tools/        repo hygiene (data-file guard)
