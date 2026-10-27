@@ -415,3 +415,38 @@ def make_fixture(cfg: FixtureConfig | None = None, **kwargs) -> Fixture:
     })
     return Fixture(msf=msf, secinfo=secinfo, ccm=ccm, funda=funda, factors=fac, truth=truth,
                    config=cfg)
+
+
+def to_fake_wrds(fixture: Fixture, layout: str = "standard"):
+    """Load a fixture into a SqliteWRDS laid out like a real WRDS account.
+
+    ``standard`` mimics the WRDS ``crsp`` schema: ``crsp.msf_v2`` carrying the CIZ
+    filter columns and point-in-time ``siccd``, ``crsp.stksecurityinfohist`` and
+    ``crsp.ccmxpf_lnkhist``. ``variant`` mimics the user's ``crsp_a_stock62``
+    schema: the stock file holds only price and return columns, and security info
+    uses ``securitybegdt`` / ``securityenddt``. Both get ``comp.funda`` and the
+    ``ff`` factor tables.
+    """
+    from halo.wrds_io import SqliteWRDS
+
+    db = SqliteWRDS()
+    msf, secinfo = fixture.msf, fixture.secinfo
+    if layout == "standard":
+        m = msf.merge(secinfo.drop(columns=["ticker"]), on="permno")
+        m = m[(m["mthcaldt"] >= m["secinfostartdt"]) & (m["mthcaldt"] <= m["secinfoenddt"])]
+        m = m.drop(columns=["secinfostartdt", "secinfoenddt"])
+        db.add_table("crsp", "msf_v2", m)
+        db.add_table("crsp", "stksecurityinfohist", secinfo)
+        db.add_table("crsp", "ccmxpf_lnkhist", fixture.ccm)
+    elif layout == "variant":
+        db.add_table("crsp_a_stock62", "wrds_msf62v2_query", msf)
+        db.add_table("crsp_a_stock62", "stksecurityinfohist62", secinfo.rename(
+            columns={"secinfostartdt": "securitybegdt", "secinfoenddt": "securityenddt"}))
+        db.add_table("crsp_a_ccm", "ccmxpf_lnkhist", fixture.ccm)
+    else:
+        raise ValueError(f"unknown layout {layout!r}")
+    db.add_table("comp", "funda", fixture.funda)
+    fac = fixture.factors
+    db.add_table("ff", "factors_monthly", fac[["date", "mktrf", "smb", "hml", "rf", "umd"]])
+    db.add_table("ff", "fivefactors_monthly", fac)
+    return db
