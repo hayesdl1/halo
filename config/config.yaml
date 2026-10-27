@@ -81,6 +81,9 @@ tuning:
 holdout:
   start: "2023-01"               # sealed. Do not change without asking the user
   goldman_regime_start: "2025-01"
+  # Goldman's headline: Capital Intensive beat Capital Light by about 35% since Jan 2025
+  # (Europe, STOXX 600). Source: The HALO Effect, Goldman Sachs Research, 24 Feb 2026.
+  goldman_reported_relative: 0.35
 
 evaluation:
   newey_west_lags: 6
