@@ -56,7 +56,7 @@ def test_outputs_written_and_readable(small, tmp_path):
                      f"FROM {e['library']}.{e['table']}")
     assert list(out.columns) == ["permno", "secinfostartdt"]
     with pytest.raises(KeyError):
-        select_list(m, "msf", ["mthretflg"])  # absent in this layout
+        select_list(m, "msf", ["mthshrout"])  # absent in the fixture
 
 
 def test_prefer_library(small, tmp_path):

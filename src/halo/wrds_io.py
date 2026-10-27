@@ -36,6 +36,8 @@ def connect():
 class SqliteWRDS:
     """In-memory stand-in for wrds.Connection, loaded from DataFrames."""
 
+    paramstyle = "named"             # sqlite3 binds :name; wrds (psycopg2) binds %(name)s
+
     def __init__(self):
         self.conn = sqlite3.connect(":memory:")
         self._libs: dict[str, list[str]] = {}

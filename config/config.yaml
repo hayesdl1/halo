@@ -1,10 +1,15 @@
 # HALO strategy configuration. Defaults follow HALO_STRATEGY_SPEC.md sections 2, 4 and 5.
 # Everything here is fixed before tuning starts. Only the robustness section varies it.
 # Changing holdout.start, the tuning objective, or the metric list requires asking the user first.
+#
+# Decided with the user on 2026-10-27: top 1000 universe; standard ranking primary,
+# sector-neutral as a variant; holdout from 2023-01; obsolescence extension off for now
+# (revisit after M6); leverage and term/default spread controls added.
 
 sample:
   signal_start: "1996-01"        # first month-end at which a score is formed
   return_start: "1996-02"        # first holding month
+  crsp_start: "1994-01-01"       # two years before signals, for 12-1 momentum and asset growth
   compustat_min_datadate: "1994-01-01"
   crsp_chunk_years: 3            # pull CRSP in chunks of this many years
 
@@ -26,7 +31,8 @@ universe:
     tradingstatusflg: ["A"]
 
 link:
-  linktypes: ["LC", "LU"]        # add "LS" as a variant once M1 confirms it is licensed
+  linktypes: ["LC", "LU"]        # used in the panel. "LS" exists (M1) and is a robustness variant
+  pull_linktypes: ["LC", "LU", "LS"]   # pulled, so the variant needs no re-pull
   linkprim: ["P", "C"]
 
 fundamentals:
@@ -36,6 +42,12 @@ fundamentals:
   nonpositive_ebitda: "nan"      # "nan" | "max_rank"
   ebitda_fallback: oibdp
   intan_missing_as_zero: true
+  # Extra Compustat items for the section 7 controls: leverage, book equity, profitability.
+  control_items: [dltt, dlc, ceq, seq, pstk, pstkrv, pstkl, txditc, revt, cogs, xsga, xint]
+
+rates:
+  source: fred                   # public data; downloaded by scripts/02_pull_compustat.py
+  fred_series: {gs10: GS10, tb3ms: TB3MS, baa: BAA, aaa: AAA}   # monthly, percent
 
 score:
   metrics: [tai, fai, fas, clr, cxi, cxl]
@@ -68,4 +80,7 @@ holdout:
 
 evaluation:
   newey_west_lags: 6
+  fm_controls: [log_size, book_to_market, profitability, asset_growth, momentum_12_1, leverage]
+  double_sort_on: [book_to_market, asset_growth, leverage]
+  rate_factors: [d_term, d_def]  # monthly changes in term and default spreads
   periods_per_year: 12

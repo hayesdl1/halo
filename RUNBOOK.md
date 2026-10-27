@@ -25,8 +25,8 @@ pytest -q        # about 10 seconds; all tests use synthetic data
 | Step | Command | Needs WRDS | Status |
 |---|---|---|---|
 | 0 | `python scripts/00_discover_schema.py` | yes | M1, ready to run |
-| 1 | `python scripts/01_pull_crsp.py` | yes | M2, not built yet |
-| 2 | `python scripts/02_pull_compustat.py` | yes | M2, not built yet |
+| 1 | `python scripts/01_pull_crsp.py` | yes | M2, ready to run |
+| 2 | `python scripts/02_pull_compustat.py` | yes (and FRED) | M2, ready to run |
 | 3 | `python scripts/03_build_panel.py` | no | M3, not built yet |
 | 4 | `python scripts/04_tune_walkforward.py` | no | M5, not built yet |
 | 5 | `python scripts/05_evaluate.py` | no | M6, not built yet |
@@ -65,3 +65,42 @@ git push -u origin m1-schema-results
 ```
 
 **If it fails to connect:** check `WRDS_USERNAME`, that `~/.pgpass` exists, and whether WRDS needs you on a university network or VPN. Approve the Duo push if one appears.
+
+## Steps 1 and 2: pull the data (WRDS)
+
+Run from the `halo` folder with the venv active (`(.venv)` at the start of the prompt) and `WRDS_USERNAME` set. On Windows PowerShell:
+
+```
+git pull
+$env:WRDS_USERNAME="hayesdl"
+python scripts/01_pull_crsp.py
+```
+
+then, once it finishes:
+
+```
+python scripts/02_pull_compustat.py
+```
+
+**Runtime:** step 1 about 5 to 15 minutes (the monthly file comes down in 3-year chunks, one progress line each). Step 2 about 2 to 5 minutes.
+
+**What they pull** (names come from `config/schema_map.yaml`, settings from `config/config.yaml`):
+
+| Step | Data | File in `data/raw/` |
+|---|---|---|
+| 1 | CRSP monthly, 1994 to today, common stock only (exchange filter applied later, so delisting-month returns are kept) | `crsp_msf_<start>_<end>.parquet` |
+| 1 | Security info history | `crsp_secinfo.parquet` |
+| 1 | CCM links, types LC, LU, LS and primacy P, C | `ccm_link.parquet` |
+| 2 | Compustat annual, standard filters, datadate from 1994 | `comp_funda.parquet` |
+| 2 | Fama-French 5 factors and momentum, decimals | `ff_factors.parquet` |
+| 2 | FRED GS10, TB3MS, BAA, AAA, with term and default spreads | `fred_rates.parquet` |
+
+Everything in `data/` is gitignored and blocked by the pre-commit hook. Never commit or share it.
+
+**Prints:** progress lines, then `PASTE EVERYTHING BELOW THIS LINE`, then for each table its row count, date range, distinct ids, NULL share per column and schema names used, then the checks as `[PASS]`, `[FAIL]`, `[FLAG]` or `[INFO]` lines. FLAG means worth a look but not an error. The script exits with status 1 if any check FAILs.
+
+**Checks in step 1:** one row per stock-month, prices positive, returns at least -100%, share of returns above 300% (FLAG above 0.01%, FAIL above 1%), NULL returns by return flag, delisting months carry a return, `mthcap` units, 12 months in every year, stocks passing the screen each December, and link-table sanity.
+
+**Checks in step 2:** one Compustat record per firm and date, input coverage by year, factor units and `rf` range, no missing factor months, yield ranges, link coverage of the top 1000 each December (must be above 90%), fundamentals coverage of that universe, and the 6-month lag rule.
+
+**Send back:** everything below the paste line from each step. If FRED is blocked on your network, step 2 reports `RATE0` as FAIL; rerun with `--skip-fred` and tell me.

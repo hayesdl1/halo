@@ -7,13 +7,15 @@ import pytest
 from halo import METRICS
 from halo.fixtures import _metric_values, make_fixture
 
-MSF_COLS = ["permno", "mthcaldt", "mthret", "mthretx", "mthprc", "mthcap", "mthprcflg"]
+MSF_COLS = ["permno", "mthcaldt", "mthret", "mthretx", "mthprc", "mthcap", "mthprcflg",
+            "mthretflg"]
 SECINFO_COLS = ["permno", "secinfostartdt", "secinfoenddt", "ticker", "siccd", "sharetype",
                 "securitytype", "securitysubtype", "usincflg", "issuertype", "primaryexch",
                 "conditionaltype", "tradingstatusflg"]
 CCM_COLS = ["gvkey", "lpermno", "linktype", "linkprim", "linkdt", "linkenddt"]
 FUNDA_COLS = ["gvkey", "datadate", "fyear", "at", "che", "intan", "sale", "ppent", "ppegt",
-              "emp", "capx", "ebitda", "oibdp", "dp", "xrd", "sich"]
+              "emp", "capx", "ebitda", "oibdp", "dp", "xrd", "sich", "dltt", "dlc", "ceq", "seq",
+              "pstk", "pstkrv", "pstkl", "txditc", "revt", "cogs", "xsga", "xint"]
 
 
 def test_shape_and_columns(fixture_default):
