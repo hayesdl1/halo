@@ -7,8 +7,8 @@ A US-equity version of Goldman Sachs' HALO (Heavy Assets, Low Obsolescence) Capi
 | Milestone | Deliverable | Status |
 |---|---|---|
 | M0 | Scaffold, config, data guard, CI, synthetic fixture | done |
-| M1 | WRDS schema discovery | script built; waiting for the WRDS run |
-| M2 | Pull scripts | |
+| M1 | WRDS schema discovery | done; see docs/schema_discovery.md and docs/schema_notes.md |
+| M2 | Pull scripts | next |
 | M3 | Panel build | |
 | M4 | Unit tests (look-ahead, ranks, turnover) | |
 | M5 | Tuning and walk-forward | |
