@@ -23,7 +23,7 @@ from halo.schema import CIZ_FILTER_COLUMNS, qualified, table_entry
 COMMON_STOCK_FILTERS = ("sharetype", "securitytype", "securitysubtype", "usincflg", "issuertype")
 EXCHANGE_FILTERS = ("primaryexch", "conditionaltype", "tradingstatusflg")
 MSF_PRICE_COLUMNS = ["permno", "mthcaldt", "mthret", "mthretx", "mthprc", "mthcap",
-                     "mthprcflg", "mthretflg"]
+                     "mthprcflg", "mthretflg", "mthprcdt"]
 MSF_REQUIRED = ["permno", "mthcaldt", "mthret", "mthprc", "mthcap"]
 FLAG_COLUMNS = ["mthprcflg", "mthretflg", *CIZ_FILTER_COLUMNS]
 MSF_GLOB = "crsp_msf_*.parquet"
@@ -66,6 +66,8 @@ def _msf_dtypes(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df["permno"] = df["permno"].astype("int64")
     df["mthcaldt"] = pd.to_datetime(df["mthcaldt"]).astype("datetime64[ns]")
+    if "mthprcdt" in df:
+        df["mthprcdt"] = pd.to_datetime(df["mthprcdt"]).astype("datetime64[ns]")
     for c in ["mthret", "mthretx", "mthprc", "mthcap"]:
         if c in df:
             df[c] = pd.to_numeric(df[c], errors="coerce").astype("float64")
@@ -131,11 +133,21 @@ def pull_secinfo(db, smap: dict, out_dir: Path, log=print) -> pd.DataFrame:
 def crsp_screen(msf: pd.DataFrame, cfg: dict, sic_col: str = "siccd") -> pd.DataFrame:
     """CRSP-side eligibility at each month-end (spec 3.8, before link and fundamentals).
 
-    Adds ``crsp_ok`` (exchange filter, price, financials, non-missing cap) and
-    ``size_rank`` (1 = largest among crsp_ok stocks that month), plus ``in_top_n``.
+    Adds ``crsp_ok`` (exchange filter, price, financials, non-missing cap, traded to the
+    end of the month) and ``size_rank`` (1 = largest among crsp_ok stocks that month),
+    plus ``in_top_n``.
+
+    "Traded to the end of the month": the stock's last price date ``mthprcdt`` is the
+    month's last trading day (the latest ``mthcaldt`` that month). A stock whose price
+    stops mid-month has been delisted, usually in a takeover, and cannot be bought at the
+    month-end. This uses only information dated within the month. Skipped when the pull
+    has no ``mthprcdt``.
     """
     u = cfg["universe"]
     ok = msf["mthcap"].notna() & (msf["mthprc"] >= u["min_price"])
+    if "mthprcdt" in msf:
+        last_day = msf.groupby("month")["mthcaldt"].transform("max")
+        ok &= (msf["mthprcdt"] >= last_day).fillna(False).astype(bool)
     exch = cfg["universe"]["exchange_filter"]
     if "primaryexch" in msf:
         ok &= msf["primaryexch"].isin(u["exchanges"])

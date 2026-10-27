@@ -11,8 +11,8 @@ A US-equity version of Goldman Sachs' HALO (Heavy Assets, Low Obsolescence) Capi
 | M2 | Pull scripts | done; both pulls passed (2026-10-27) |
 | M3 | Panel build | done; all checks passed, Exhibit 6 reproduced (2026-10-27) |
 | M4 | Unit tests (look-ahead, ranks, turnover) | done; portfolio code and tests |
-| M5 | Tuning and walk-forward | script built; waiting for the local run |
-| M6 | Evaluation and report | |
+| M5 | Tuning and walk-forward | done; first run 2026-10-27 |
+| M6 | Evaluation and report | script built; waiting for the local run |
 | M7 | Holdout | |
 
 ## Decisions

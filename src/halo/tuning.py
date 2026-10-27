@@ -289,19 +289,21 @@ def run_tuning(panel_path, results_dir, cfg: dict, log=print) -> str:
     summary = oos_summary(wf.oos)
     summary.to_csv(results / "oos_summary.csv", index=False)
     trials_path = results / "trials.csv"
+    new = wf.trials.assign(kind="grid")
     if trials_path.exists():
         old = pd.read_csv(trials_path, dtype={"config_hash": str})
-        old = old[old["config_hash"] != h]                   # a rerun replaces its own rows
-        trials = pd.concat([old, wf.trials], ignore_index=True)
+        kind = old["kind"] if "kind" in old else pd.Series("grid", index=old.index)
+        old = old[~((old["config_hash"] == h) & (kind == "grid"))]   # a rerun replaces itself
+        trials = pd.concat([old, new], ignore_index=True)
     else:
-        trials = wf.trials
+        trials = new
     trials.to_csv(trials_path, index=False)
 
     wcols = [f"w_{m}" for m in METRICS]
     wp = wf.weights_path
     corners = int((wp[wcols].max(axis=1) >= 0.999).sum())
     big_jumps = int((wp["l1_change"] >= 1.0).sum())
-    n_configs = trials["config_hash"].nunique()
+    n_configs = trials.loc[trials["kind"] == "grid", "config_hash"].nunique()
     lines = [
         "== Walk-forward tuning ==",
         f"config hash {h}; grid step {cfg['tuning']['grid_step']} ({len(wf.grid)} weight "
