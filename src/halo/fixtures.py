@@ -231,6 +231,24 @@ def make_fixture(cfg: FixtureConfig | None = None, **kwargs) -> Fixture:
     # A handful of non-positive sales and a few firms with no sich in early years.
     funda.loc[rng.random(len(funda)) < 0.003, "sale"] = 0.0
     funda.loc[(funda["fyear"] < 1998) & (rng.random(len(funda)) < 0.3), "sich"] = np.nan
+    # Control items for section 7 (leverage, book equity, profitability). A separate random
+    # stream keeps every value drawn above unchanged.
+    rng2 = np.random.default_rng(cfg.seed + 10_000)
+    m = len(funda)
+    debt = funda["at"] * np.clip(rng2.normal(0.25, 0.12, m), 0.0, 0.8)
+    funda["dltt"] = debt * 0.8
+    funda["dlc"] = debt * 0.2
+    funda["ceq"] = funda["at"] * np.clip(rng2.normal(0.4, 0.15, m), -0.2, 0.9)
+    funda["pstk"] = np.where(rng2.random(m) < 0.1, funda["at"] * 0.02, 0.0)
+    funda["pstkrv"], funda["pstkl"] = funda["pstk"], funda["pstk"]
+    funda["seq"] = funda["ceq"] + funda["pstk"]
+    funda["txditc"] = funda["at"] * np.clip(rng2.normal(0.03, 0.02, m), 0.0, None)
+    funda["revt"] = funda["sale"]
+    funda["cogs"] = funda["sale"] * np.clip(rng2.normal(0.6, 0.1, m), 0.1, 0.95)
+    funda["xsga"] = funda["sale"] * np.clip(rng2.normal(0.15, 0.05, m), 0.0, 0.5)
+    funda["xint"] = debt * 0.05
+    for col in ["dltt", "ceq", "txditc", "xsga"]:
+        funda.loc[rng2.random(m) < 0.03, col] = np.nan
     funda["indfmt"], funda["datafmt"], funda["popsrc"], funda["consol"] = "INDL", "STD", "D", "C"
     # Duplicate a few records in the FS format so the INDL filter matters.
     fs = funda.sample(frac=0.02, random_state=cfg.seed).assign(indfmt="FS")
@@ -303,6 +321,12 @@ def make_fixture(cfg: FixtureConfig | None = None, **kwargs) -> Fixture:
     msf["mthprcflg"] = pd.Categorical(
         rng.choice(["TR", "BA"], size=len(msf), p=[0.97, 0.03]), categories=["TR", "BA", "DA"]
     )
+    # Return flags as seen on WRDS (M1): CR normal, NT no return, DE delisting month.
+    flg = np.where(msf["mthret"].isna(), "NT", "CR").astype(object)
+    delist_rows = msf.groupby("permno").tail(1)
+    delist_rows = delist_rows[delist_rows["permno"].isin(permno[delists])].index
+    flg[msf.index.get_indexer(delist_rows)] = "DE"
+    msf["mthretflg"] = pd.Categorical(flg, categories=["CR", "NT", "DE"])
 
     # ---- non-common securities ----------------------------------------------------
     nc_permno = 90001 + np.arange(cfg.n_noncommon) * 7
@@ -314,8 +338,9 @@ def make_fixture(cfg: FixtureConfig | None = None, **kwargs) -> Fixture:
             r = rng.normal(0.008, 0.06)
             price *= 1 + r
             nc_recs.append((p, mcal[t], r, r - 0.001, price, price * shrout))
-    nc = pd.DataFrame(nc_recs, columns=msf.columns[:-1])
+    nc = pd.DataFrame(nc_recs, columns=msf.columns[:-2])
     nc["mthprcflg"] = pd.Categorical(["TR"] * len(nc), categories=["TR", "BA", "DA"])
+    nc["mthretflg"] = pd.Categorical(["CR"] * len(nc), categories=["CR", "NT", "DE"])
     msf = pd.concat([msf, nc], ignore_index=True)
 
     # ---- security info history ----------------------------------------------------

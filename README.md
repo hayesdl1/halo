@@ -8,12 +8,22 @@ A US-equity version of Goldman Sachs' HALO (Heavy Assets, Low Obsolescence) Capi
 |---|---|---|
 | M0 | Scaffold, config, data guard, CI, synthetic fixture | done |
 | M1 | WRDS schema discovery | done; see docs/schema_discovery.md and docs/schema_notes.md |
-| M2 | Pull scripts | next |
+| M2 | Pull scripts | scripts built; waiting for the WRDS run |
 | M3 | Panel build | |
 | M4 | Unit tests (look-ahead, ranks, turnover) | |
 | M5 | Tuning and walk-forward | |
 | M6 | Evaluation and report | |
 | M7 | Holdout | |
+
+## Decisions
+
+Confirmed with the user on 2026-10-27 (details in the spec, section 10):
+
+- Universe: top 1000 by market cap, non-financial, price at least $5.
+- Standard ranking is primary; sector-neutral is a reported variant.
+- Holdout starts 2023-01 and is sealed until M7.
+- Obsolescence extension off for now; revisit after M6.
+- Added: leverage control and term/default spread factors. No credit ratings (Compustat coverage ends 2017).
 
 ## Setup
 

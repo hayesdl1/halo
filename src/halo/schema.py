@@ -132,7 +132,10 @@ CONCEPTS: dict[str, Concept] = {c.name: c for c in [
         candidates=(("comp", "funda"), ("comp_na_daily_all", "funda"), (r"comp\w*", "funda")),
         columns=_same("gvkey", "datadate", "fyear", "at", "che", "intan", "sale", "ppent",
                       "ppegt", "emp", "capx", "ebitda", "oibdp", "dp", "xrd", "sich",
-                      "indfmt", "datafmt", "popsrc", "consol"),
+                      "indfmt", "datafmt", "popsrc", "consol",
+                      # section 7 controls (added in M2)
+                      "dltt", "dlc", "ceq", "seq", "pstk", "pstkrv", "pstkl", "txditc",
+                      "revt", "cogs", "xsga", "xint"),
         required=("gvkey", "datadate", "at", "sale", "ppent", "capx", "emp", "indfmt",
                   "datafmt", "popsrc", "consol"),
         date_columns=("datadate",),

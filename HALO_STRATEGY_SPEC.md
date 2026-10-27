@@ -45,6 +45,7 @@ Weaknesses in the Goldman note that this project must address, not repeat:
 | Overlaps with Value and likely with the investment factor (high capex firms tend to have low future returns in the older literature) | Spanning regressions on FF5 + momentum, double sorts on book-to-market and investment (section 7) |
 | All six metrics measure asset heaviness; none measures obsolescence | Optional obsolescence extension, off by default (section 4.4) |
 | Sector discretion; classification cuts across sectors | Sector-neutral variant and basket composition reports |
+| Capital-heavy sectors (utilities, pipelines) are bond proxies with high debt, so HALO may be rate, credit or leverage exposure | Leverage control in Fama-MacBeth and double sorts; term and default spread changes in factor regressions (section 7) |
 | Hindsight construction, no costs | Point-in-time data, costs, turnover |
 
 ---
@@ -131,6 +132,8 @@ Notes: `securitysubtype = 'COM'` alone is not enough, and `sharetype = 'COM'` re
 
 Also pull point-in-time SIC (`siccd` in security info [VERIFY]) for the financials exclusion and the sector-neutral variant. Fall back to Compustat `sich`, then `sic`.
 
+Pull scope (decided in M2): the pull applies the five common-stock filters in SQL but keeps the three exchange and trading-status fields as columns. Eligibility at month-end `t` (section 3.8) applies the exchange filter at `t`. The return in month `t+1` is then taken whatever the stock's exchange or trading status in `t+1`, so a stock that is delisted or suspended in its holding month keeps its final return.
+
 ### 3.4 Return handling rules
 
 - Return for holding month `t+1` is `mthret` of month `t+1`, applied to the portfolio formed with information at the end of month `t`.
@@ -163,6 +166,8 @@ indfmt = 'INDL' AND datafmt = 'STD' AND popsrc = 'D' AND consol = 'C'
 
 Columns: `gvkey, datadate, fyear, at, che, intan, sale, ppent, ppegt, emp, capx, ebitda, oibdp, dp, xrd, sich`. Confirm names in M1 [VERIFY]; `ebitda` may need `oibdp` as a fallback.
 
+Also pulled for the section 7 controls: `dltt, dlc` (leverage), `ceq, seq, pstk, pstkrv, pstkl, txditc` (book equity), `revt, cogs, xsga, xint` (operating profitability). The pull confirms each name exists before querying.
+
 Units: dollar items are in millions; `emp` is in thousands of employees. Capital-labour ratio is therefore in millions of dollars per thousand employees. Units do not matter for percentile ranks, so do not rescale, but document it.
 
 Timing: a fiscal year record with `datadate = D` becomes usable at month-end `D + 6 months` and expires after 18 months. Implement with a per-firm `merge_asof` on an `available_date` column. Never use the record on its own `datadate`. Make the lag a config value and run the 3-month and 9-month versions as robustness.
@@ -172,6 +177,8 @@ Annual data only: `emp` exists only annually, so quarterly fundamentals are out 
 ### 3.7 Factor data
 
 Prefer WRDS Fama-French library tables (`ff.factors_monthly`, `ff.fivefactors_monthly`, with momentum `umd` in the monthly file) [VERIFY names and units; WRDS factors are typically in decimals, Ken French's site is in percent]. Fall back to Ken French's library CSVs only if WRDS lacks them. Convert to decimals, convert dates to `Period("M")`, and assert `rf` is between 0 and 0.02 monthly.
+
+Rates (added in M2): monthly FRED series `GS10` (10-year Treasury), `TB3MS` (3-month bill), `BAA` and `AAA` (Moody's corporate yields), all in percent, converted to decimals. Term spread = GS10 - TB3MS; default spread = BAA - AAA. FRED is public data, downloaded by the pull script, and never committed.
 
 ### 3.8 Panel construction
 
@@ -266,10 +273,10 @@ Log every weight vector and configuration evaluated to `results/trials.csv` (con
 For every strategy variant (tuned, replica, single metrics, benchmarks), over the walk-forward out-of-sample window, the holdout, and the Goldman-regime window:
 
 1. Mean, geometric return, volatility, Sharpe, Newey-West t of the mean (6 lags), max drawdown, hit rate, worst month, turnover, net-of-cost versions.
-2. Factor regressions of the long-short: CAPM, FF3, Carhart, and **FF5 + momentum** (MKT, SMB, HML, RMW, CMA, UMD). Report alpha (annualised), its Newey-West t, and betas. Expect a negative CMA loading, since capex heavy firms invest a lot. The alpha after CMA is the real HALO test.
+2. Factor regressions of the long-short: CAPM, FF3, Carhart, and **FF5 + momentum** (MKT, SMB, HML, RMW, CMA, UMD). Report alpha (annualised), its Newey-West t, and betas. Expect a negative CMA loading, since capex heavy firms invest a lot. The alpha after CMA is the real HALO test. Also run **FF5 + momentum + rates**: the six factors plus monthly changes in the term spread and the default spread, to test whether HALO is rate or credit exposure.
 3. Spanning tests: regress the HALO long-short on HML and on CMA separately, and report the correlation with HML (Goldman's Exhibit 12 claims HALO tracks Value versus Growth).
-4. Fama-MacBeth: monthly cross-sectional regression of next-month return on the standardised score, controlling for log size, book-to-market, profitability, asset growth, and 12-1 month momentum. Report the mean slope and Newey-West t.
-5. Double sorts: score quintiles within book-to-market terciles, and within asset-growth terciles.
+4. Fama-MacBeth: monthly cross-sectional regression of next-month return on the standardised score, controlling for log size, book-to-market, profitability, asset growth, 12-1 month momentum, and leverage ((`dltt` + `dlc`) / `at`). Report the mean slope and Newey-West t.
+5. Double sorts: score quintiles within book-to-market terciles, within asset-growth terciles, and within leverage terciles.
 6. Sub-period table: by decade, by rate regime (months when the 10-year yield rose versus fell, if a yield series is available on WRDS or FRED; skip if not), and the 2025-onward window.
 7. Goldman claim check: cumulative Q5 versus Q1 relative performance from Jan 2025 to the last available month, on the same axes as Goldman's headline (+35% in Europe).
 8. Robustness grid: universe size (500, 1000, 1500), include financials, tercile and top-half/bottom-half baskets, value-weighted, lag 3 and 9 months, `ppegt`, `nonpositive_ebitda: max_rank`, sector-neutral, cost levels.
@@ -325,7 +332,13 @@ halo-strategy/
 | M6 | `evaluate.py`, `05_evaluate.py`, `REPORT.md`, charts | Report reproduces from CSVs; null fixture produces no false positive at |t| > 3 |
 | M7 | `06_holdout.py` with lock file; final report with holdout and 2025 window | Run once by the user |
 
-Open decisions to confirm with the user before M5 (defaults are in config): universe size, sector-neutral as primary or variant, holdout start date, whether the obsolescence extension is in scope.
+Decisions confirmed by the user on 2026-10-27 (previously open):
+
+- Universe: top 1000 by market cap.
+- Standard (cross-sector) ranking is primary; sector-neutral is reported as a variant.
+- Holdout starts 2023-01.
+- Obsolescence extension (4.4) is off. Raise it again after M6 if the results suggest it is worth testing.
+- Added: leverage control and term/default spread factors (sections 3.6, 3.7, 7). Credit ratings are not used: Compustat S&P ratings end in 2017 and miss the holdout.
 
 ---
 
