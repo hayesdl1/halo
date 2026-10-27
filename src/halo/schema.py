@@ -158,7 +158,7 @@ CONCEPTS: dict[str, Concept] = {c.name: c for c in [
     Concept(
         name="legacy_msf",
         description="Legacy CRSP monthly file (only to check the freeze date; never used)",
-        candidates=(("crsp", "msf"), ("crsp_a_stock", "msf")),
+        candidates=(("crsp", "msf"), ("crsp_a_stock", "msf"), ("crsp_a_stock62", r"msf\d*")),
         columns={"date": ("date",), "permno": ("permno",)},
         required=("date",),
         date_columns=("date",),

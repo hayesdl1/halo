@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import datetime as dt
 import re
-import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -77,10 +76,13 @@ class Check:
 
 
 class Discovery:
-    def __init__(self, db, prefer_library: str | None = None, log=print):
+    def __init__(self, db, prefer_library: str | None = None, log=print,
+                 sample_start: str = "1996-01-01"):
         self.db = db
         self.prefer = prefer_library
         self.log = log
+        self.sample_start = pd.Timestamp(sample_start).strftime("%Y-%m-%d")
+        self.no_access: dict[str, str] = {}      # lib.table -> first line of the error
         self.libraries: list[str] = []
         self.tables: dict[str, Resolved] = {}
         self.unresolved: dict[str, str] = {}
@@ -113,8 +115,8 @@ class Discovery:
         try:
             fn()
         except Exception as exc:
-            tb = traceback.format_exc(limit=1).strip().splitlines()[-1]
-            self.add(check_id, claim, ERROR, f"{type(exc).__name__}: {exc} ({tb})", critical)
+            self.add(check_id, claim, ERROR, f"{type(exc).__name__}: {_first_line(exc)}",
+                     critical)
 
     # ---- step 1: libraries and tables ---------------------------------------------
 
@@ -142,6 +144,8 @@ class Discovery:
                     mapping = {canon: next((a for a in alts if a in names), None)
                                for canon, alts in concept.columns.items()}
                     if all(mapping[r] for r in concept.required):
+                        if not self.can_query(lib, tab):
+                            continue
                         all_cols = pd.DataFrame({"name": names,
                                                  "type": [str(t) for t in desc["type"]]})
                         matches.append(Resolved(concept, lib, tab, mapping, all_cols))
@@ -150,7 +154,10 @@ class Discovery:
                         self.log(f"  {lib}.{tab} matched {concept.name} by name but lacks "
                                  f"{missing}; skipped")
         if not matches:
-            self.unresolved[concept.name] = "no candidate table has the required columns"
+            blocked = [t for t in seen if t in self.no_access]
+            self.unresolved[concept.name] = (
+                f"no candidate table has the required columns and can be queried; "
+                f"permission denied on: {blocked or 'none'}")
             self.log(f"  {concept.name}: NOT FOUND")
             return
         chosen = matches[0]
@@ -159,6 +166,19 @@ class Discovery:
         self.log(f"  {concept.name}: {chosen.fqn}"
                  + (f" (also found: {', '.join(chosen.alternatives)})"
                     if chosen.alternatives else ""))
+
+    def can_query(self, lib: str, tab: str) -> bool:
+        """Describing a view needs no rights on its source; reading it does. Probe once."""
+        fqn = f"{check_identifier(lib)}.{check_identifier(tab)}"
+        if fqn in self.no_access:
+            return False
+        try:
+            self.sql(f"SELECT 1 AS ok FROM {fqn} LIMIT 1")
+            return True
+        except Exception as exc:
+            self.no_access[fqn] = _first_line(exc)
+            self.log(f"  {fqn}: no permission to read ({self.no_access[fqn]}); trying the next")
+            return False
 
     # ---- step 2: profile each table ------------------------------------------------
 
@@ -320,6 +340,10 @@ class Discovery:
                      f"no legacy msf found; {msf.fqn} runs to {v2_hi}")
             return
         hi = legacy.date_ranges.get("date", (None, None))[1]
+        if hi is None or v2_hi is None:
+            self.add("R7", "Legacy tables frozen after 2024-12-31", UNKNOWN,
+                     f"end dates unavailable: {legacy.fqn} {hi}, {msf.fqn} {v2_hi}")
+            return
         frozen = hi is not None and hi <= dt.date(2024, 12, 31)
         newer = v2_hi is not None and hi is not None and v2_hi > hi
         self.add("R7", "Legacy tables frozen after 2024-12-31, v2 tables continue",
@@ -391,6 +415,25 @@ class Discovery:
             self.add("F4", "Rows passing every available filter", INFO,
                      f"{int(n['n']):,} rows, {int(n['k']):,} distinct permnos in {r.fqn}")
 
+    def check_secinfo_windows(self) -> None:
+        si = self.tables["secinfo"]
+        p, a, b = si.col("permno"), si.col("secinfostartdt"), si.col("secinfoenddt")
+        overlap = self.sql(f"SELECT COUNT(*) AS n FROM {si.fqn} x JOIN {si.fqn} y "
+                           f"ON x.{p} = y.{p} AND x.{a} < y.{a} AND x.{b} >= y.{a}"
+                           ).iloc[0]["n"]
+        same_start = self.sql(f"SELECT COUNT(*) AS n FROM (SELECT {p}, {a} FROM {si.fqn} "
+                              f"GROUP BY {p}, {a} HAVING COUNT(*) > 1) AS dup").iloc[0]["n"]
+        n = int(overlap or 0) + int(same_start or 0)
+        names = f"{si.columns['secinfostartdt']} / {si.columns['secinfoenddt']}"
+        whole_life = si.columns["secinfostartdt"] != "secinfostartdt"
+        self.add("S1", "Security info rows have non-overlapping validity windows per permno, "
+                 "so a date-range join gives one row per (permno, date)",
+                 CONFIRMED if n == 0 else REFUTED,
+                 f"{int(overlap or 0):,} overlapping pairs and {int(same_start or 0):,} "
+                 f"(permno, start) duplicates using {names}"
+                 + (". These columns may be the security's whole life rather than the "
+                    "validity window of each row" if whole_life else ""))
+
     def check_ccm(self) -> None:
         ccm = self.tables["ccm"]
         lt = self.value_counts(ccm, "linktype")
@@ -449,17 +492,24 @@ class Discovery:
             if not r:
                 continue
             s = self.sql(f"SELECT AVG(ABS({r.col('mktrf')})) AS m, MIN({r.col('rf')}) AS rf_lo, "
-                         f"MAX({r.col('rf')}) AS rf_hi FROM {r.fqn}").iloc[0]
+                         f"MAX({r.col('rf')}) AS rf_hi FROM {r.fqn} "
+                         f"WHERE {r.col('date')} >= '{self.sample_start}'").iloc[0]
+            lo, hi = r.date_ranges.get("date", (None, None))
+            first_of_month = lo is not None and lo.day == 1 and hi.day == 1
+            self.decisions.setdefault("factor_date_convention", {})[name] = (
+                "first_of_month" if first_of_month else "month_end_or_other")
             decimal = float(s["m"]) < 0.2
             self.decisions.setdefault("factor_units", {})[name] = (
                 "decimal" if decimal else "percent")
             rf_ok = (0 <= float(s["rf_lo"]) and float(s["rf_hi"]) <= 0.02) if decimal else None
             self.add("V10" if name == "ff_monthly" else "V10b",
-                     f"{r.fqn} is in decimals and monthly rf is between 0 and 0.02",
+                     f"{r.fqn} is in decimals and monthly rf is between 0 and 0.02 "
+                     f"from {self.sample_start}",
                      CONFIRMED if decimal and rf_ok else REFUTED,
                      f"mean |mktrf| = {float(s['m']):.4f} ({'decimal' if decimal else 'percent'}); "
                      f"rf from {float(s['rf_lo']):.4f} to {float(s['rf_hi']):.4f}; "
-                     f"date range {_range(r.date_ranges.get('date'))}; umd "
+                     f"date range {_range(r.date_ranges.get('date'))} "
+                     f"({'first of month' if first_of_month else 'not first of month'}); umd "
                      f"{'present' if r.columns.get('umd') else 'absent'}")
 
     # ---- run -----------------------------------------------------------------------
@@ -469,6 +519,9 @@ class Discovery:
         self.log("Resolving tables:")
         for concept in CONCEPTS.values():
             self.resolve(concept)
+        if self.no_access:
+            self.add("A1", "Tables skipped because this account cannot read them", INFO,
+                     "; ".join(f"{t} ({e})" for t, e in sorted(self.no_access.items())))
         self.log("Profiling tables:")
         for r in self.tables.values():
             self.log(f"  {r.fqn}")
@@ -485,6 +538,7 @@ class Discovery:
             ("msf", "R7", "legacy freeze", self.check_legacy_freeze),
             ("msf", "R8", "month-end dates", self.check_month_dates),
             ("msf", "F", "universe filters", self.check_filters),
+            ("secinfo", "S1", "security info windows", self.check_secinfo_windows),
             ("ccm", "L", "CCM link", self.check_ccm),
             ("funda", "C", "Compustat", self.check_funda),
             ("ff_monthly", "V10", "factors", self.check_factors),
@@ -509,6 +563,11 @@ def _date(x):
     if x is None or pd.isna(x):
         return None
     return pd.Timestamp(x).date()
+
+
+def _first_line(exc: Exception) -> str:
+    text = str(exc).strip()
+    return text.splitlines()[0] if text else type(exc).__name__
 
 
 def _range(v) -> str:
@@ -614,8 +673,9 @@ def _md(s: str) -> str:
 
 
 def run_discovery(db, doc_path: str | Path, map_path: str | Path,
-                  prefer_library: str | None = None, log=print) -> Discovery:
-    d = Discovery(db, prefer_library=prefer_library, log=log)
+                  prefer_library: str | None = None, log=print,
+                  sample_start: str = "1996-01-01") -> Discovery:
+    d = Discovery(db, prefer_library=prefer_library, log=log, sample_start=sample_start)
     d.run()
     doc_path, map_path = Path(doc_path), Path(map_path)
     doc_path.parent.mkdir(parents=True, exist_ok=True)
