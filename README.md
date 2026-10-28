@@ -13,7 +13,11 @@ A US-equity version of Goldman Sachs' HALO (Heavy Assets, Low Obsolescence) Capi
 | M4 | Unit tests (look-ahead, ranks, turnover) | done; portfolio code and tests |
 | M5 | Tuning and walk-forward | done; first run 2026-10-27 |
 | M6 | Evaluation and report | done; full report 2026-10-27 |
-| M7 | Holdout | script built; run once by the user |
+| M7 | Holdout | done; evaluated once 2026-10-28 |
+
+## Findings
+
+See [docs/findings.md](docs/findings.md): no persistent HALO premium in US large and mid caps, 1996 to 2025, including the sealed 2023 to 2025 holdout; positive in 2025 but about a quarter of Goldman's European figure and not significant.
 
 ## Decisions
 
