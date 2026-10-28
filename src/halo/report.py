@@ -56,6 +56,8 @@ def build_report(results_dir) -> str:
     if s is not None:
         out += ["## Design", "", md_table(s), ""]
 
+    out += _holdout_section(res)
+
     dc = _read(res, "data_checks")
     if dc is not None:
         out += ["## Data checks (each December)", "",
@@ -189,5 +191,51 @@ def build_report(results_dir) -> str:
             "- Costs are a flat rate per dollar traded; no market-impact model.",
             "- None of the six metrics measures obsolescence; the optional extension is not "
             "included.",
-            "- The holdout, including Goldman's 2025 window, is reported separately in M7.", ""]
+            "- The holdout, including Goldman's 2025 window, is short (a few years of months), "
+            "so its statistics are imprecise.", ""]
     return "\n".join(out)
+
+
+def _holdout_section(res: Path) -> list[str]:
+    meta = _read(res, "holdout_meta")
+    if meta is None:
+        return []
+    m = meta.iloc[0]
+    out = [f"## Holdout result: {m['holdout_start']} to {m['last_month']} (M7)", ""]
+    if bool(m["forced_rerun"]):
+        out += ["**WARNING: the holdout was evaluated more than once (rerun with --force). "
+                "Treat these numbers with that in mind; see results/holdout_evaluated.lock.**",
+                ""]
+    out += [f"Evaluated once on {m['evaluated_at_utc']} UTC with config {m['config_hash']}. "
+            "The weights were tuned on pre-holdout months only and written to disk before "
+            "any holdout return was computed.", ""]
+    w = _read(res, "holdout_weights")
+    if w is not None:
+        cols = ["lambda", *[c for c in w.columns if c.startswith("w_")], "train_start",
+                "train_end", "train_months", "in_sample_sharpe_smoothed"]
+        out += ["Frozen weights (lambda 1 = tuned, 0 = equal weight):", "",
+                md_table(w[cols], {c: lambda v: _num(v, 2) for c in cols
+                                   if c.startswith("w_") or c.startswith("in_sample")}), ""]
+    g = _read(res, "holdout_goldman")
+    if g is not None:
+        out += ["Goldman claim check: cumulative top-basket return relative to the bottom "
+                "basket since the regime start, gross, on the same axes as Goldman's headline "
+                "(which is for Europe, not the US).", "",
+                md_table(g, {"top_cumulative": _pct, "bottom_cumulative": _pct,
+                             "top_vs_bottom_relative": _pct, "top_vs_universe_relative": _pct,
+                             "goldman_reported_europe": lambda v: _pct(v, 0)}), ""]
+    hp = _read(res, "holdout_perf")
+    if hp is not None:
+        cols = ["strategy", "months", "mean_ann", "vol_ann", "sharpe", "t_nw", "max_drawdown",
+                "hit_rate", "turnover_month"]
+        for win in hp["window"].unique():
+            t = hp[(hp["window"] == win) & (hp["returns"] == "net")]
+            out += [f"Performance, net of costs: {win}", "", md_table(t[cols], PERF_FMT), ""]
+    fr = _read(res, "holdout_factor_regressions")
+    if fr is not None:
+        keep = [c for c in ["strategy", "model", "months", "alpha_ann", "alpha_t", "b_mktrf",
+                            "b_hml", "b_cma", "b_umd", "b_d_term", "b_d_def", "r2"] if c in fr]
+        out += ["Holdout factor regressions (net):", "",
+                md_table(fr[keep], {"alpha_ann": _pct, "alpha_t": _num, "r2": _num,
+                                    **{c: _num for c in keep if c.startswith("b_")}}), ""]
+    return out

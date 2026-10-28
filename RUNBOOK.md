@@ -30,7 +30,7 @@ pytest -q        # about 10 seconds; all tests use synthetic data
 | 3 | `python scripts/03_build_panel.py` | no | M3, ready to run |
 | 4 | `python scripts/04_tune_walkforward.py` | no | M5, ready to run |
 | 5 | `python scripts/05_evaluate.py` | no | M6, ready to run |
-| 6 | `python scripts/06_holdout.py` | no | M7, run once only, after asking |
+| 6 | `python scripts/06_holdout.py` | no | M7, ready; run once only |
 
 Each step's expected runtime and printed output are documented below as they are built.
 
@@ -160,3 +160,18 @@ Step 2 (Compustat) does not need rerunning. Step 3 now prints check P11 with the
 **Writes:** one CSV per analysis in `results/`, charts in `results/charts/`, and `results/REPORT.md`, built only from those CSVs. It refuses to run if `results/oos_returns.csv` was made from a different panel (rerun step 4).
 
 **Send back:** everything below the paste line, which is the full REPORT.md. The charts are in `results\charts` if you want to look at them.
+
+## Step 6: the holdout (local, no WRDS). Run once.
+
+```
+git pull
+python scripts/06_holdout.py
+```
+
+**Runtime:** about 3 to 6 minutes.
+
+**What it does:** tunes the weights once on every month before 2023-01 (same grid, smoothing and objective as step 4), writes them to `results/holdout_weights.csv` before computing any holdout return, then evaluates 2023-01 to the latest month and Goldman's 2025 window: the frozen tuned blend, the halfway blend, the equal-weight replica, each metric alone, Value and Investment, factor regressions, and the Goldman claim check (top quintile's cumulative return relative to the bottom quintile since January 2025, next to Goldman's +35% for Europe). Adds a holdout section near the top of `results/REPORT.md` and two charts.
+
+**Once only:** it writes `results/holdout_evaluated.lock` and refuses to run again. `--force` overrides that, and the report then says in bold that the holdout was evaluated more than once. Do not rerun steps 3 to 5 with different settings afterwards and then rerun the holdout: that is exactly the overfitting the holdout exists to prevent.
+
+**Send back:** everything below the paste line (the holdout section of the report).

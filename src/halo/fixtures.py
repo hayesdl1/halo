@@ -520,3 +520,31 @@ def panel_inputs(fixture: Fixture) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataF
     funda = fixture.funda[fixture.funda["indfmt"] == "INDL"].drop(
         columns=["indfmt", "datafmt", "popsrc", "consol"]).reset_index(drop=True)
     return msf, ccm.reset_index(drop=True), funda
+
+
+def run_pipeline(tmp, planted=None, overrides: dict | None = None, seed: int = 1) -> dict:
+    """Run discovery, both pulls, the panel build and tuning on a fixture, exactly as the
+    scripts do on the user's machine. Returns the config used. For end-to-end tests."""
+    from pathlib import Path
+
+    from halo.config import load_config
+    from halo.discovery import run_discovery
+    from halo.panel import run_build
+    from halo.pull_steps import step_compustat, step_crsp
+    from halo.schema import load_schema_map
+    from halo.tuning import run_tuning
+
+    tmp = Path(tmp)
+    f = make_fixture(seed=seed, planted=planted)
+    common = f.msf["permno"].isin(f.truth["permno"])
+    last = f.msf["mthcaldt"].max()
+    f.msf.loc[f.msf.loc[(f.msf["mthcaldt"] == last) & common, "mthcap"].idxmax(),
+              "mthcap"] = 2.5e9                    # a mega-cap for the units check
+    db = to_fake_wrds(f, "standard")
+    run_discovery(db, tmp / "d.md", tmp / "m.yaml", log=lambda *a: None)
+    smap, cfg = load_schema_map(tmp / "m.yaml"), load_config(overrides=overrides)
+    step_crsp(db, smap, cfg, tmp / "raw", "2015-12-31", log=lambda *a: None)
+    step_compustat(db, smap, cfg, tmp / "raw", fetch=fake_fred, log=lambda *a: None)
+    run_build(tmp / "raw", tmp / "processed", cfg, log=lambda *a: None)
+    run_tuning(tmp / "processed" / "panel.parquet", tmp / "results", cfg, log=lambda *a: None)
+    return cfg

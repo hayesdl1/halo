@@ -6,8 +6,6 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from halo.config import load_config
-from halo.discovery import run_discovery
 from halo.eval_steps import run_evaluation, tuned_score
 from halo.evaluate import (
     add_controls,
@@ -21,32 +19,15 @@ from halo.evaluate import (
     regress,
     stationary_bootstrap_index,
 )
-from halo.fixtures import fake_fred, make_fixture, to_fake_wrds
-from halo.panel import run_build
+from halo.fixtures import run_pipeline
 from halo.portfolio import long_short
-from halo.pull_steps import step_compustat, step_crsp
 from halo.report import build_report
-from halo.schema import load_schema_map
-from halo.tuning import run_tuning
 
 OVERRIDES = {"tuning": {"walkforward_years": [2008, 2014]}, "holdout": {"start": "2015-01"}}
 
 
 def pipeline(tmp: Path, planted):
-    """Pulls, panel, tuning: exactly what the user's machine runs, on a fixture."""
-    f = make_fixture(seed=1, planted=planted)
-    common = f.msf["permno"].isin(f.truth["permno"])
-    last = f.msf["mthcaldt"].max()
-    f.msf.loc[f.msf.loc[(f.msf["mthcaldt"] == last) & common, "mthcap"].idxmax(),
-              "mthcap"] = 2.5e9
-    db = to_fake_wrds(f, "standard")
-    run_discovery(db, tmp / "d.md", tmp / "m.yaml", log=lambda *a: None)
-    smap, cfg = load_schema_map(tmp / "m.yaml"), load_config(overrides=OVERRIDES)
-    step_crsp(db, smap, cfg, tmp / "raw", "2015-12-31", log=lambda *a: None)
-    step_compustat(db, smap, cfg, tmp / "raw", fetch=fake_fred, log=lambda *a: None)
-    run_build(tmp / "raw", tmp / "processed", cfg, log=lambda *a: None)
-    run_tuning(tmp / "processed" / "panel.parquet", tmp / "results", cfg, log=lambda *a: None)
-    return cfg
+    return run_pipeline(tmp, planted, OVERRIDES)
 
 
 @pytest.fixture(scope="module")
